@@ -273,4 +273,4 @@ else:
     print(back_track)
     vel=points_to_vel(back_track)
 
-    game(10, back_track)
+    game(clearance*100, back_track)
