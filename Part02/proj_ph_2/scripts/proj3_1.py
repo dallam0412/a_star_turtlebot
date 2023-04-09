@@ -4,6 +4,9 @@ import math
 from queue import PriorityQueue as pq
 from sortedcollections import OrderedSet
 import pygame as pg
+import rospy
+from geometry_msgs.msg import Twist
+import time
 
 obstacle_space=OrderedSet()
 visited_nodes=[]
@@ -233,9 +236,25 @@ def game(bloat,optimal_path):
     pg.time.wait(3000)
     pg.quit()
 
-clearance=int(input("enter the clearance in mm: "))
-clearance=clearance/1000
-getting_obstacle_points(0.105+clearance)
+def ros_input():
+    rospy.init_node('robot_talker',anonymous=True)
+
+    # clearance = rospy.get_param('~clearance', default=0.0)
+    # clearance = clearance/1000
+    x_pos = rospy.get_param('~x_pos', default=0.0)
+    y_pos = rospy.get_param('~y_pos', default=0.0)
+    start_theta = rospy.get_param('~start_theta', default=0.0)
+    goal_x_pos = rospy.get_param('~goal_x_pos', default=0.0)
+    goal_y_pos = rospy.get_param('~goal_y_pos', default=0.0)
+    rpm1 = rospy.get_param('~rpm1', default=0.0)
+    rpm2 = rospy.get_param('~rpm2', default=0.0)
+    # print("---")
+    # print(x_pos, y_pos, start_theta)
+    # print("---")
+    return (x_pos+0.5, y_pos+1, start_theta), (goal_x_pos+0.5, goal_y_pos+1), rpm1, rpm2
+
+
+getting_obstacle_points(0.205)
 start,goal,RPM1,RPM2=get_input()
 vel1,vel2=rpm_to_velocity(RPM1),rpm_to_velocity(RPM2)
 actions=[[0,vel1],[vel1,0],[vel1,vel1],[0,vel2],[vel2,0],[vel2,vel2],[vel1,vel2],[vel2,vel1]]
@@ -270,7 +289,21 @@ else:
         if back_node==start:
             break
     back_track.reverse()
-    print(back_track)
+    print()
     vel=points_to_vel(back_track)
 
     game(10, back_track)
+
+
+def test():
+	msg=Twist()
+	pub=rospy.Publisher('/cmd_vel',Twist,queue_size=10)
+	# rospy.init_node('robot_talker',anonymous=True)
+	for i in back_track:
+		msg.angular.z=i[1]
+		msg.linear.x=i[0]
+		pub.publish(msg)
+		time.sleep(0.1)
+		
+if __name__=='__main__':
+	test()

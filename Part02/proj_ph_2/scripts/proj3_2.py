@@ -1,9 +1,14 @@
+#!/usr/bin/env python3
+
 import numpy as np
 import matplotlib.pyplot as plt
 import math
 from queue import PriorityQueue as pq
 from sortedcollections import OrderedSet
 import pygame as pg
+import rospy
+from geometry_msgs.msg import Twist
+import time
 
 obstacle_space=OrderedSet()
 visited_nodes=[]
@@ -64,7 +69,7 @@ def dist(p1,p2):
 
 
 def check_theta(theta):
-    if theta>=360:
+    if theta> 360:
         theta=theta%360
     elif -360 < theta<0:
         theta += 360
@@ -110,10 +115,11 @@ def cost(node,ul,ur,c2c,goal):
     back_track_intermediate=[]
     xn=node[0]
     yn=node[1]
-    thetan=(3.14*node[2])/180
+    thetan=(math.pi*node[2])/180
     back_track_intermediate.append(change_points_plot((round(xn,2),round(yn,2)), 200))
     reached=0
     while t<1:
+        t=t+dt
         xs=xn
         ys=yn
         delta_xn= 0.5*r * (ul + ur) * math.cos(thetan) * dt
@@ -123,64 +129,54 @@ def cost(node,ul,ur,c2c,goal):
         yn+=delta_yn
         thetan+=thetan_now
         D=D+dist((xs,ys),(xn,yn))
-        t=t+dt
-        if (round(xn,2),round(yn,2)) not in obstacle_space:
-            reached+=1
-            back_track_intermediate.append(change_points_plot((round(xn,2),round(yn,2)), 200))
-
-        else:
-            break
-    if reached<5:
-        reached=0
-        return 
-    else:
-        if xn>=0 and xn<=6 and yn>=0 and yn<=2:
-            thetan = round(thetan,2)
-            thetan = (180 * (thetan)) / 3.14
-            thetan=check_theta(thetan)
-            if (round(xn,2),round(yn,2))not in visited_nodes and (round(xn,2),round(yn,2)) not in obstacle_space:
-                new_node=(round(xn,2),round(yn,2),round(thetan,2))
-                new_c2c=D+c2c
-                new_c2g=dist(new_node,goal)
-                cost=new_c2c+new_c2g*1.25
-                for i in range(open_list.qsize()):
-                    if open_list.queue[i][3]==new_node:
-                        if open_list.queue[i][0]>cost:
-                            open_list.queue[i]=(cost,new_c2g,new_c2c,new_node)
-                            for i in range(len(table)):
-                                if table[i][2]==new_node:
-                                    if cost<table[i][0]:
-                                        table[i][0]=cost
-                                        table[i][1]=node
-                                        table[i][2]=new_node
-                                        return
-                                    else:
-                                        return
-                table.append([cost,node,new_node,back_track_intermediate])
-                open_list.put((cost,new_c2g,new_c2c,new_node))
-                visited_nodes.append((new_node[0], new_node[1]))
-                if dist(new_node,goal)<0.15:
-                    check_reach=True
-                    new_goal=new_node
-                reached = 0
+        if (round(xn,2),round(yn,2)) in obstacle_space:
+            return
+        back_track_intermediate.append(change_points_plot((round(xn,2),round(yn,2)), 200))   
+    linear_x = 0.5*r * (ul + ur) * math.cos(thetan) 
+    linear_y = 0.5*r * (ul + ur) * math.sin(thetan)
+    linear = np.sqrt(linear_x**2 + linear_y**2)
+    angular = (r/l)*(ur-ul)
+    vel = (linear, angular)
+    if xn>=0 and xn<=6 and yn>=0 and yn<=2:
+        thetan = round(thetan,2)
+        thetan = (180 * (thetan)) / 3.14
+        thetan=check_theta(thetan)
+        if (round(xn,2),round(yn,2))not in visited_nodes and (round(xn,2),round(yn,2)) not in obstacle_space:
+            new_node=(round(xn,2),round(yn,2),round(thetan,2))
+            new_c2c=D+c2c
+            new_c2g=dist(new_node,goal)
+            cost=new_c2c+new_c2g*1.25
+            for i in range(open_list.qsize()):
+                if open_list.queue[i][3]==new_node:
+                    if open_list.queue[i][0]>cost:
+                        open_list.queue[i]=(cost,new_c2g,new_c2c,new_node)
+                        for i in range(len(table)):
+                            if table[i][2]==new_node:
+                                if cost<table[i][0]:
+                                    table[i][0]=cost
+                                    table[i][1]=node
+                                    table[i][2]=new_node
+                                    table[i][3]=back_track_intermediate
+                                    table[i][4]=vel
+                                    velocity_dict[new_node] = vel
+                                    return
+                                else:
+                                    return
+            table.append([cost,node,new_node,back_track_intermediate, vel])
+            open_list.put((cost,new_c2g,new_c2c,new_node))
+            visited_nodes.append((new_node[0], new_node[1]))
+            velocity_dict[new_node] = vel
+            if dist(new_node,goal)<0.15:
+                check_reach=True
+                new_goal=new_node
 
 def points_to_vel(back_track):
-    back_track= np.array(back_track)
-    x_pts=back_track[:,0]
-    y_pts=back_track[:,1]
-    theta_pts=back_track[:,2]
-    for i in range (len(theta_pts)):
-        theta_pts[i]=3.14*theta_pts[i]/180
-    x_vel=0
-    y_vel=0
-    theta_vel=0
-    vel=[]
-    for i in range (len(back_track)-1):
-        x_vel=(x_pts[i+1]-x_pts[i])/10
-        y_vel=(y_pts[i+1]-y_pts[i])/10
-        theta_vel=(theta_pts[i+1]-theta_pts[i])/10
-        vel.append([x_vel,y_vel,theta_vel])
-    return vel
+    velocity = []
+    for i in back_track:        
+        if i != start:
+            velocity.append(velocity_dict[i])
+    print(velocity)
+    return velocity
 
 def game(bloat,optimal_path):
     pg.init()
@@ -216,13 +212,11 @@ def game(bloat,optimal_path):
         for l in range(1,len(table)):
         
             inter_list=table[l][3]
-            #print("inter_list1",inter_list[1])
             pg.draw.lines(display_view, "white",False,inter_list,2)
             pg.display.flip()
             clock.tick(300)
 
         for i in optimal_path:
-            # print(i)
             item = (i[0], i[1])
             pg.draw.circle(display_view, "blue", change_points_plot(item, 200), 4)
             pg.display.flip()
@@ -233,10 +227,41 @@ def game(bloat,optimal_path):
     pg.time.wait(3000)
     pg.quit()
 
-clearance=int(input("enter the clearance in mm: "))
-clearance=clearance/1000
+def ros_input():
+    rospy.init_node('robot_talker',anonymous=True)
+
+    clearance = rospy.get_param('~clearance', default=0.0)
+    clearance = clearance/1000
+    cord_x = rospy.get_param('~cord_x', default=0.0)
+    cord_y = rospy.get_param('~cord_y', default=0.0)
+    initial_theta = rospy.get_param('~inital_theta', default=0.0)
+    goal_x_coord = rospy.get_param('~goal_x_coord', default=0.0)
+    goal_y_coord = rospy.get_param('~goal_y_coord', default=0.0)
+    rpm1 = rospy.get_param('~rpm1', default=0.0)
+    rpm2 = rospy.get_param('~rpm2', default=0.0)
+    print("---")
+    print(cord_x, cord_y, initial_theta)
+    print("---")
+    return clearance,(cord_x+0.5, cord_y+1, initial_theta), (goal_x_coord+0.5, goal_y_coord+1), rpm1, rpm2
+
+def test(velocity):
+    msg=Twist()
+    pub=rospy.Publisher('/cmd_vel',Twist,queue_size=10)
+    i = 0
+    while i < len(velocity):
+        msg.linear.x=velocity[i][0]
+        msg.angular.z=velocity[i][1]
+        pub.publish(msg)
+        i += 1
+        print(i)
+        time.sleep(1)
+    msg.angular.z = 0.0
+    msg.linear.x = 0.0
+    pub.publish(msg)
+    
+clearance,start,goal,RPM1,RPM2=ros_input()
 getting_obstacle_points(0.105+clearance)
-start,goal,RPM1,RPM2=get_input()
+velocity_dict = {}
 vel1,vel2=rpm_to_velocity(RPM1),rpm_to_velocity(RPM2)
 actions=[[0,vel1],[vel1,0],[vel1,vel1],[0,vel2],[vel2,0],[vel2,vel2],[vel1,vel2],[vel2,vel1]]
 table.append([0,start,start])
@@ -247,8 +272,6 @@ while(open_list.empty()==False):
     current_node=open_list.get()
     now_node=current_node[3]
     if dist(now_node, goal) > 0.15:
-    # if (now_node[0], now_node[1]) not in visited_nodes:
-    #     visited_nodes.append((now_node[0], now_node[1]))
         for action in actions:
             cost(now_node,action[0],action[1],current_node[2],goal)
             if check_reach==True:
@@ -261,16 +284,18 @@ else:
     print("goal reached")
     back_node=new_goal
     back_track=[back_node]
+    vel = []
     while(True):
         for i in range(len(table)):
             if table[i][2]==back_node:
                 back_node=table[i][1]
                 back_track.append(back_node)
+                vel.append(table[i][4])
                 break
         if back_node==start:
             break
     back_track.reverse()
-    print(back_track)
-    vel=points_to_vel(back_track)
-
+    vel.reverse()
+    print((vel))
     game(10, back_track)
+    test(vel)
