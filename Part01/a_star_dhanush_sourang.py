@@ -233,8 +233,9 @@ def game(bloat,optimal_path):
     pg.time.wait(3000)
     pg.quit()
 
-
-getting_obstacle_points(0.205)
+clearance=int(input("enter the clearance in mm: "))
+clearance=clearance/1000
+getting_obstacle_points(0.105+clearance)
 start,goal,RPM1,RPM2=get_input()
 vel1,vel2=rpm_to_velocity(RPM1),rpm_to_velocity(RPM2)
 actions=[[0,vel1],[vel1,0],[vel1,vel1],[0,vel2],[vel2,0],[vel2,vel2],[vel1,vel2],[vel2,vel1]]
